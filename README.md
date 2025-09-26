@@ -1,14 +1,14 @@
-## Automated Anki Word & Sentence Learning System (AnkiVocabBot) Specification
+## Automated Anki Word & Sentence Learning System (GTrans-Favorites-to-Anki) Specification
 
 ### 1. System Overview
 
 #### 1.1. System Name
 
-**AnkiVocabBot** (Anki Vocab-Bot)
+**GTrans-Favorites-to-Anki** (Anki Vocab-Bot)
 
 #### 1.2. Purpose
 
-AnkiVocabBot automatically retrieves words and sentences saved in Google Translate's "Favorites" using a **Python script**. The retrieved data is processed by Gemini AI and automatically registered as cards in Anki. After successful registration, the corresponding items are deleted from Google Translate Favorites to prevent duplicate entries and maintain efficient learning. This system is designed to run directly on a local environment, offering a simple and automated learning solution.
+GTrans-Favorites-to-Anki automatically retrieves words and sentences saved in Google Translate's "Favorites" using a **Python script**. The retrieved data is processed by Gemini AI and automatically registered as cards in Anki. After successful registration, the corresponding items are deleted from Google Translate Favorites to prevent duplicate entries and maintain efficient learning. This system is designed to run directly on a local environment, offering a simple and automated learning solution.
 
 ### 2. System Architecture
 
@@ -36,7 +36,7 @@ anki-vocab-bot/
 
 ```mermaid
 graph TD
-    SCHEDULER[Scheduler] --> SCRIPT[AnkiVocabBot];
+    SCHEDULER[Scheduler] --> SCRIPT[GTrans-Favorites-to-Anki];
 
     SCRIPT -- Data I/O --> LOCAL_FILES[Local Data Files];
     LOCAL_FILES[Local Data Files] --> auth_state[auth_state.json];
