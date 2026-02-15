@@ -104,3 +104,23 @@ def add_note(note: AnkiNote) -> Optional[int]: # 型ヒントを更新
     except Exception as e:
         logger.error("Failed to add note to AnkiConnect: %s", e)
         return None
+
+
+def find_notes(query: str) -> List[int]:
+    """Find notes by query."""
+    return _invoke("findNotes", {"query": query})
+
+
+def notes_info(note_ids: List[int]) -> List[Dict[str, Any]]:
+    """Get information for multiple notes."""
+    return _invoke("notesInfo", {"notes": note_ids})
+
+
+def update_note_fields(note_id: int, fields: Dict[str, str]) -> None:
+    """Update fields of a note."""
+    _invoke("updateNoteFields", {"note": {"id": note_id, "fields": fields}})
+
+
+def store_media_file(filename: str, data: str) -> str:
+    """Store a media file in Anki. 'data' is base64 encoded string."""
+    return _invoke("storeMediaFile", {"filename": filename, "data": data})
