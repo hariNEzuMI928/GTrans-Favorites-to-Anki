@@ -10,6 +10,9 @@ log() {
     echo "$ts | $level | $module | $msg"
 }
 
+# スクリプトのあるディレクトリに移動
+cd "$(dirname "$0")" || exit
+
 # Ankiアプリケーションを起動
 log INFO "Ankiを起動します..."
 

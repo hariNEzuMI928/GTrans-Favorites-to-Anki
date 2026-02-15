@@ -77,9 +77,9 @@ def _process_new_favorites(
         processed_item: Optional[ProcessedItem] = gemini_processor.process_item(item)
 
         if processed_item:
-            if processed_item.type == "word":
+            if processed_item.type == "word" and isinstance(processed_item.data, ProcessedWord):
                 notes_to_add.append(format_word_note(processed_item.data))
-            elif processed_item.type == "sentence":
+            elif processed_item.type == "sentence" and isinstance(processed_item.data, ProcessedSentence):
                 notes_to_add.append(format_sentence_note(processed_item.data))
             newly_processed_ids.add(item.item_id)
         else:

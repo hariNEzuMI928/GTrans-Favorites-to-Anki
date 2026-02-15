@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import json
+import time
 from typing import Dict, List, Literal, Any, TypedDict
 from dataclasses import dataclass
 
@@ -51,10 +52,12 @@ class GeminiProcessor:
         api_key = config.GEMINI_API_KEY
         if not api_key:
             raise RuntimeError("GEMINI_API_KEY is not set in .env")
-        genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel(config.GEMINI_MODEL)
+        genai.configure(api_key=api_key)  # pyright: ignore [reportPrivateImportUsage]
+        self.model = genai.GenerativeModel(config.GEMINI_MODEL)  # pyright: ignore [reportPrivateImportUsage]
 
-    def process_item(self, item: FavoriteItem) -> ProcessedItem | None:
+    def process_item(self, item: FavoriteItem, retry_count: int = 0) -> ProcessedItem | None:
+        MAX_RETRIES = 3
+        
         prompt = f"""Developer: Given an English/Japanese text and its translation from Google Translate favorites:
 
 - **Text:** {item.text}
@@ -104,14 +107,24 @@ Output schema:
 
 Return only the JSON result. Do not include any additional text.
 """
-
+        response_text = ""
         try:
             response = self.model.generate_content(prompt)
-            json_output = response.text.strip()
+            response_text = response.text
+            json_output = response_text.strip()
 
             # Clean up potential markdown formatting if Gemini includes it
             if json_output.startswith("```json") and json_output.endswith("```"):
                 json_output = json_output[7:-3].strip()
+
+            # Attempt to find the first '{' and the last '}' to extract the raw JSON string.
+            try:
+                start_index = json_output.index('{')
+                end_index = json_output.rindex('}')
+                json_output = json_output[start_index:end_index + 1]
+            except ValueError:
+                logger.error("Could not find a valid JSON object boundary ('{' and '}') in the response for item_id: %s", item.item_id)
+                return None
 
             # Use TypedDict for better type checking
             data: GeminiOutput = json.loads(json_output)
@@ -144,10 +157,27 @@ Return only the JSON result. Do not include any additional text.
                 return None
 
         except json.JSONDecodeError as e:
-            logger.error("Failed to parse Gemini JSON response for item_id %s: %s\nResponse text: %s", item.item_id, e, response.text)
+            logger.error("Failed to parse Gemini JSON response for item_id %s: %s\nResponse text: %s", item.item_id, e, response_text)
             return None
         except GoogleAPIError as e:
             logger.error("Gemini API error for item_id %s: %s", item.item_id, e)
+            
+            # Check for rate limit error (HTTP 429) and implement retry logic
+            if "429" in str(e) and retry_count < MAX_RETRIES:
+                import re
+                retry_delay = 5.0 # Default fallback delay
+                
+                # Attempt to extract precise retry delay from the error message
+                if hasattr(e, "message"):
+                    match = re.search(r"Please retry in (\d+\.\d+)s", str(e))
+                    if match:
+                        retry_delay = float(match.group(1))
+
+                logger.info("Rate limit exceeded (429). Retrying item_id: %s in %.2f seconds (Attempt %d/%d).", 
+                            item.item_id, retry_delay, retry_count + 1, MAX_RETRIES)
+                time.sleep(retry_delay + 1) # Add a small buffer
+                return self.process_item(item, retry_count + 1) # Recursive retry
+            
             return None
         except Exception as e:
             logger.error("Unexpected error during Gemini processing for item_id %s: %s", item.item_id, e)

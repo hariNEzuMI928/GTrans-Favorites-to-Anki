@@ -37,7 +37,11 @@ class Scraper:
 
         browser: Browser = pw.chromium.launch(
             headless=headless,
-            args=["--disable-blink-features=AutomationControlled"],
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--disk-cache-size=0",
+                "--media-cache-size=0",
+            ],
         )
 
         context_options: Dict[str, Any] = {
