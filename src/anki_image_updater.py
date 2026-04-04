@@ -110,7 +110,7 @@ def update_cards_with_images(deck_name: str, ease_limit: Optional[float] = None)
             logger.warning(f"Could not determine word for note {note_id}. Fields: {fields.keys()}")
             continue
 
-        logger.info(f"Processing note {i+1}/{len(notes_data)} (ID: {note_id}, Word: {word})")
+        logger.info(f"⭐️Processing note {i+1}/{len(notes_data)} (ID: {note_id}, Word: {word})")
 
         # Add a small delay to be nice to the API
         time.sleep(0.5)
@@ -140,7 +140,7 @@ def update_cards_with_images(deck_name: str, ease_limit: Optional[float] = None)
 def main():
     setup_logging()
     parser = argparse.ArgumentParser(description="Add images to difficult Anki cards using Langeek API")
-    parser.add_argument("--deck", default=config.ANKI_WORD_DECK_NAME if hasattr(config, 'ANKI_WORD_DECK_NAME') else "Default", help="Deck name")
+    parser.add_argument("--deck", default="1_Vocabulary_今日の復習", help="Deck name")
     parser.add_argument("--ease", type=float, default=None, help="Ease threshold (prop:ease<X)")
 
     args = parser.parse_args()
