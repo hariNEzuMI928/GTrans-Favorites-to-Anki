@@ -13,6 +13,12 @@ log() {
 # スクリプトのあるディレクトリに移動
 cd "$(dirname "$0")" || exit
 
+# 週次同期（日曜日に実行）
+if [ "$(date +%u)" -eq 7 ]; then
+    log INFO "週次の Google Sheets 同期を開始します (Mature カード)..."
+    .venv/bin/python3 -m src.anki_mature_to_sheets
+fi
+
 # Ankiアプリケーションを起動
 log INFO "Ankiを起動します..."
 
@@ -21,7 +27,7 @@ sleep 10
 
 # Pythonスクリプトを実行
 log INFO "Pythonスクリプトを実行中..."
-/usr/bin/python3 -m src.main --once
+.venv/bin/python3 -m src.main --once
 
 # スクリプトの完了後、Ankiを終了
 log INFO "Ankiを終了します..."
