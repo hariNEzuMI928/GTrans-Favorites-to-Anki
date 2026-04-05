@@ -116,6 +116,16 @@ def notes_info(note_ids: List[int]) -> List[Dict[str, Any]]:
     return _invoke("notesInfo", {"notes": note_ids})
 
 
+def find_cards(query: str) -> List[int]:
+    """Find cards by query."""
+    return _invoke("findCards", {"query": query})
+
+
+def cards_info(card_ids: List[int]) -> List[Dict[str, Any]]:
+    """Get information for multiple cards."""
+    return _invoke("cardsInfo", {"cards": card_ids})
+
+
 def update_note_fields(note_id: int, fields: Dict[str, str]) -> None:
     """Update fields of a note."""
     _invoke("updateNoteFields", {"note": {"id": note_id, "fields": fields}})

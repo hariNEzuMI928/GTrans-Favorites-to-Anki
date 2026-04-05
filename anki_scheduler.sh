@@ -13,20 +13,19 @@ log() {
 # スクリプトのあるディレクトリに移動
 cd "$(dirname "$0")" || exit
 
+# Ankiアプリケーションを起動
+log INFO "Ankiを起動します..."
+open -a Anki
+sleep 15  # 起動と同期（Sync）の完了を待つために少し長めに設定
+
 # 週次同期（日曜日に実行）
 if [ "$(date +%u)" -eq 7 ]; then
     log INFO "週次の Google Sheets 同期を開始します (Mature カード)..."
     .venv/bin/python3 -m src.scripts.anki_mature_to_sheets
 fi
 
-# Ankiアプリケーションを起動
-log INFO "Ankiを起動します..."
-
-open -a Anki
-sleep 10
-
 # Pythonスクリプトを実行
-log INFO "Pythonスクリプトを実行中..."
+log INFO "メインの同期処理を実行中..."
 .venv/bin/python3 -m src.main --once
 
 # スクリプトの完了後、Ankiを終了

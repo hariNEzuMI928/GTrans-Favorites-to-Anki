@@ -18,39 +18,25 @@ logger = logging.getLogger("main")
 
 def _load_and_filter_favorites(
     limit: int, processed_item_ids: Set[str], skip_browser: bool
-) -> List[FavoriteItem]:
-    """Loads favorites, cleans up stale items, and filters out already processed ones."""
-    all_favorites: List[FavoriteItem] = []
-    if not skip_browser:
-        logger.info("Fetching favorite items from Google Translate...")
-        all_favorites = fetch_favorites(limit=limit)
-        logger.info("Found %d favorite items in Google Translate.", len(all_favorites))
-
-        stale_favorites = [item for item in all_favorites if item.item_id in processed_item_ids]
-        if stale_favorites:
-            logger.info(
-                "Found %d stale items in Google Translate favorites that were already processed. Cleaning up...",
-                len(stale_favorites),
-            )
-            deleted_count = 0
-            for item in stale_favorites:
-                if delete_favorite_item(item):
-                    deleted_count += 1
-                else:
-                    logger.warning(
-                        "Failed to delete stale item %s from Google Translate favorites.",
-                        item.text,
-                    )
-            logger.info("Successfully deleted %d stale items.", deleted_count)
-            logger.info("Refetching favorites from Google Translate after cleanup...")
-            all_favorites = fetch_favorites(limit=limit)
-            logger.info("Found %d favorite items after cleanup.", len(all_favorites))
-    else:
+) -> Tuple[List[FavoriteItem], List[FavoriteItem]]:
+    """Loads favorites and splits them into new and already processed items."""
+    if skip_browser:
         logger.info("Skipping browser operation as --skip-browser is enabled.")
+        return [], []
 
-    new_favorites = [item for item in all_favorites if item.item_id not in processed_item_ids]
-    logger.info("Found %d new items to process.", len(new_favorites))
-    return new_favorites
+    logger.info("Fetching favorite items from Google Translate...")
+    favorites = fetch_favorites()
+
+    new_items = [f for f in favorites if f.item_id not in processed_item_ids]
+    stale_items = [f for f in favorites if f.item_id in processed_item_ids]
+
+    logger.info(
+        "Found %d favorite items: %d new, %d already processed.",
+        len(favorites),
+        len(new_items),
+        len(stale_items),
+    )
+    return new_items, stale_items
 
 
 def _process_new_favorites(
@@ -157,7 +143,14 @@ def run_once(limit: int, dry_run: bool, skip_browser: bool) -> None:
     processed_item_ids: Set[str] = load_ids(config.PROCESSED_IDS_PATH)
     logger.info("Loaded %d already processed items.", len(processed_item_ids))
 
-    new_favorites = _load_and_filter_favorites(limit, processed_item_ids, skip_browser)
+    new_favorites, stale_favorites = _load_and_filter_favorites(limit, processed_item_ids, skip_browser)
+
+    if stale_favorites:
+        logger.info(
+            "Found %d already processed items in Google Translate. Cleaning up...",
+            len(stale_favorites),
+        )
+        _delete_processed_favorites(stale_favorites, skip_browser)
 
     if not new_favorites:
         logger.info("No new items to process. Exiting run.")

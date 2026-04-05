@@ -15,7 +15,6 @@ Usage:
 import argparse
 import logging
 import re
-import sqlite3
 from pathlib import Path
 from typing import List, Tuple
 
@@ -67,59 +66,58 @@ def strip_html(text: str) -> str:
     return clean
 
 
+from ..core.anki_client import find_cards, cards_info
+
 def fetch_mature_cards(
-    db_path: str,
     deck_name_prefix: str,
     field_index: int,
     mature_threshold: int = MATURE_THRESHOLD,
 ) -> List[str]:
-    """指定デッキ（前方一致）から Mature カードの内容を抽出する。"""
+    """指定デッキ（前方一致）から Mature カードの内容を抽出する (AnkiConnect経由)。"""
     results: List[str] = []
-    db_uri = f"file:{db_path}?mode=ro"
-
+    
+    # AnkiConnect 用のクエリを作成 (前方一致デッキ名 & 間隔条件)
+    # queue >= 0 (通常キュー) も含めるなら prop:queue>=0 も追加可能ですが、
+    # ivl >= X であれば通常はアクティブです。
+    query = f'deck:"{deck_name_prefix}*" prop:ivl>={mature_threshold}'
+    
     try:
-        con = sqlite3.connect(db_uri, uri=True)
-        # Anki 独自の unicase コリレーションを登録
-        con.create_collation("unicase", lambda a, b: (a.lower() > b.lower()) - (a.lower() < b.lower()))
-    except sqlite3.OperationalError as e:
-        logger.error(f"DB 接続失敗: {e}")
-        raise
-
-    with con:
-        cur = con.cursor()
-
-        # デッキ ID を収集 (前方一致)
-        cur.execute("SELECT id, name FROM decks WHERE name LIKE ?", (deck_name_prefix + "%",))
-        target_dids = []
-        for did, name in cur.fetchall():
-            target_dids.append(did)
-            logger.info(f"  対象デッキ検出: '{name}' (did={did})")
-
-        if not target_dids:
-            logger.warning(f"デッキ '{deck_name_prefix}' に一致するものがありません。")
+        card_ids = find_cards(query)
+        if not card_ids:
+            logger.info(f"  対象カードなし: '{deck_name_prefix}*'")
             return results
 
-        placeholders = ",".join("?" * len(target_dids))
-        query = f"""
-            SELECT n.flds
-            FROM cards c
-            JOIN notes n ON c.nid = n.id
-            WHERE c.did IN ({placeholders})
-              AND c.ivl >= ?
-              AND c.queue >= 0
-            ORDER BY c.ivl DESC
-        """
-        cur.execute(query, target_dids + [mature_threshold])
-        rows = cur.fetchall()
+        logger.info(f"  '{deck_name_prefix}*' から {len(card_ids)} 件の Mature カードを取得中...")
+        
+        # 情報を一括取得
+        cards_data = cards_info(card_ids)
+        
+        for card in cards_data:
+            model_name = card.get("modelName", "")
+            fields = card.get("fields", {})
+            # フィールドを order の順に並べる
+            sorted_fields = sorted(fields.items(), key=lambda x: x[1]["order"])
+            
+            # デッキとノートタイプに応じたフィールド index の調整
+            # (英作文デッキで「基本_単語」を使っている場合のみ、index 1 ではなく 2 (意味) を見る)
+            actual_index = field_index
+            if "EnglishComposition" in deck_name_prefix and model_name == "基本_単語":
+                actual_index = 2 # 「意味」フィールド
+                
+            if actual_index < len(sorted_fields):
+                raw_value = sorted_fields[actual_index][1]["value"]
+                content = strip_html(raw_value)
+                if content:
+                    results.append(content)
+                    
+        # 重複排除 (順序を維持)
+        results = list(dict.fromkeys(results))
+        logger.info(f"  結果: {len(results)} 件のユニークなアイテムを抽出")
 
-    logger.info(f"  '{deck_name_prefix}' (前方一致) から {len(rows)} 件の Mature カードを取得")
-
-    for (flds_raw,) in rows:
-        fields = flds_raw.split("\x1f")
-        if field_index < len(fields):
-            content = strip_html(fields[field_index])
-            if content:
-                results.append(content)
+    except Exception as e:
+        logger.error(f"AnkiConnect からのデータ取得失敗: {e}")
+        # スケジューラ実行中など、Anki未起動の場合はエラーを上げる
+        raise
 
     return results
 
@@ -161,7 +159,7 @@ def main() -> None:
         logger.info("-" * 60)
         logger.info(f"処理中: '{deck_name}' → '{tab_name}'")
         
-        cards = fetch_mature_cards(ANKI_COLLECTION_PATH, deck_name, field_index)
+        cards = fetch_mature_cards(deck_name, field_index)
         if cards:
             sync_to_sheet(client, SPREADSHEET_ID, tab_name, cards, args.dry_run)
         else:
