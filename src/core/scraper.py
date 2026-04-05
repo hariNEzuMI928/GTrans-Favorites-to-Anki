@@ -33,7 +33,7 @@ class Scraper:
     def _new_context(self, pw: Playwright, manual_login: bool) -> Tuple[BrowserContext, Browser]:
         """Creates a new Playwright browser context with common options."""
         user_agent: str = config.PLAYWRIGHT_USER_AGENT
-        headless: bool = not manual_login if manual_login else config.PLAYWRIGHT_HEADLESS
+        headless: bool = False if manual_login else config.PLAYWRIGHT_HEADLESS
 
         browser: Browser = pw.chromium.launch(
             headless=headless,
@@ -170,56 +170,72 @@ class Scraper:
             return items
 
     def delete_favorite_item(self, item: FavoriteItem) -> bool:
-        """Deletes a specific item from Google Translate favorites."""
+        """Deletes a single item from Google Translate favorites."""
+        return self.delete_favorite_items([item]) > 0
+
+    def delete_favorite_items(self, items: List[FavoriteItem]) -> int:
+        """Deletes multiple items from Google Translate favorites in a single browser session."""
+        if not items:
+            return 0
+
+        deleted_count = 0
         with sync_playwright() as pw:
             context, browser = self._new_context(pw, manual_login=False)
             page: Page = context.new_page()
 
             try:
-                logger.info("Navigating to favorites page to delete item: %s", item.text)
+                logger.info("Navigating to favorites page for batch deletion...")
                 page.goto(config.GOOGLE_TRANSLATE_FAVORITES_URL, wait_until="domcontentloaded", timeout=60000)
 
-                # Use a more robust selector for the item, escaping quotes in item.text
-                escaped_item_text = item.text.replace('"', '\\"')
-                item_selector: str = f"{self.selectors['favorite_item']}:has-text(\"{escaped_item_text}\")"
-                logger.info("Attempting to find item with selector: %s", item_selector)
+                for item in items:
+                    try:
+                        # Use a more robust selector for the item, escaping quotes in item.text
+                        escaped_item_text = item.text.replace('"', '\\"')
+                        item_selector: str = f"{self.selectors['favorite_item']}:has-text(\"{escaped_item_text}\")"
+                        logger.debug("Attempting to find item to delete: %s", item.text)
 
-                target_item_locator = page.locator(item_selector).first
-                target_item_locator.wait_for(state="visible", timeout=30000)
+                        target_item_locator = page.locator(item_selector).first
+                        # Check visibility with a shorter timeout for batch processing
+                        if target_item_locator.count() == 0:
+                            logger.warning("Item to delete not found: %s", item.text)
+                            continue
 
-                if target_item_locator.count() == 0:
-                    logger.warning("Item to delete not found: %s", item.text)
-                    return False
+                        delete_button = target_item_locator.locator(self.selectors['favorite_item_delete_button']).first
+                        delete_button.click()
 
-                delete_button = target_item_locator.locator(self.selectors['favorite_item_delete_button']).first
-                delete_button.wait_for(state="visible", timeout=10000)
-                delete_button.click()
+                        # Wait for the item to disappear from the DOM
+                        target_item_locator.wait_for(state="hidden", timeout=5000)
+                        logger.info("Successfully deleted item: %s", item.text)
+                        deleted_count += 1
+                    except Exception as e:
+                        logger.error("Failed to delete item %s: %s", item.text, e)
 
-                logger.info("Successfully clicked delete button for item: %s", item.text)
-
-                target_item_locator.wait_for(state="hidden", timeout=10000)
-                logger.info("Item %s successfully deleted and removed from DOM.", item.text)
-                return True
-
-            except TimeoutError as e:
-                logger.error("Timeout during deleting item %s: %s", item.text, e)
-                screenshot_path = config.DATA_DIR / f"error_delete_item_timeout_{item.item_id[:8]}.png"
-                page.screenshot(path=str(screenshot_path))
-                logger.error("Screenshot saved to %s", screenshot_path)
-                return False
             except Exception as e:
-                logger.error("Error deleting item %s: %s", item.text, e, exc_info=True)
-                screenshot_path = config.DATA_DIR / f"error_delete_item_{item.item_id[:8]}.png"
-                page.screenshot(path=str(screenshot_path))
-                logger.error("Screenshot saved to %s", screenshot_path)
-                return False
+                logger.error("Error during batch deletion: %s", e, exc_info=True)
             finally:
                 page.close()
                 context.close()
                 browser.close()
 
-# Global scraper instance for backward compatibility with existing calls
-_global_scraper = Scraper()
-ensure_logged_in = _global_scraper.ensure_logged_in
-fetch_favorites = _global_scraper.fetch_favorites
-delete_favorite_item = _global_scraper.delete_favorite_item
+        return deleted_count
+
+# Functions for backward compatibility and simpler access
+_SCRAPER_INSTANCE: Optional[Scraper] = None
+
+def _get_scraper() -> Scraper:
+    global _SCRAPER_INSTANCE
+    if _SCRAPER_INSTANCE is None:
+        _SCRAPER_INSTANCE = Scraper()
+    return _SCRAPER_INSTANCE
+
+def ensure_logged_in(manual_login: bool = False, timeout_sec: int = 300) -> None:
+    _get_scraper().ensure_logged_in(manual_login, timeout_sec)
+
+def fetch_favorites(limit: Optional[int] = None) -> List[FavoriteItem]:
+    return _get_scraper().fetch_favorites(limit)
+
+def delete_favorite_item(item: FavoriteItem) -> bool:
+    return _get_scraper().delete_favorite_item(item)
+
+def delete_favorite_items(items: List[FavoriteItem]) -> int:
+    return _get_scraper().delete_favorite_items(items)

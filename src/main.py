@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import argparse
 import logging
-import sys
-import time
-from typing import List, Dict, Any, Set, Tuple, Optional
+from typing import List, Set, Tuple, Optional
 
 from .utils import config
 from .utils.logging_setup import setup_logging
@@ -25,7 +23,7 @@ def _load_and_filter_favorites(
         return [], []
 
     logger.info("Fetching favorite items from Google Translate...")
-    favorites = fetch_favorites()
+    favorites = fetch_favorites(limit=limit)
 
     new_items = [f for f in favorites if f.item_id not in processed_item_ids]
     stale_items = [f for f in favorites if f.item_id in processed_item_ids]
@@ -41,10 +39,10 @@ def _load_and_filter_favorites(
 
 def _process_new_favorites(
     new_favorites: List[FavoriteItem], limit: int, dry_run: bool
-) -> Tuple[List[AnkiNote], Set[str]]:
-    """Processes new favorite items using Gemini AI and prepares Anki notes."""
+) -> Tuple[List[Tuple[AnkiNote, FavoriteItem]], Set[str]]:
+    """Processes new favorite items using Gemini AI and prepares Anki notes paired with their source items."""
     gemini_processor = GeminiProcessor()
-    notes_to_add: List[AnkiNote] = []
+    note_item_pairs: List[Tuple[AnkiNote, FavoriteItem]] = []
     newly_processed_ids: Set[str] = set()
 
     logger.info("Processing %d new items with Gemini AI...", len(new_favorites))
@@ -63,31 +61,29 @@ def _process_new_favorites(
 
         if processed_item:
             if processed_item.type == "word" and isinstance(processed_item.data, ProcessedWord):
-                notes_to_add.append(format_word_note(processed_item.data))
+                note_item_pairs.append((format_word_note(processed_item.data), item))
             elif processed_item.type == "sentence" and isinstance(processed_item.data, ProcessedSentence):
-                notes_to_add.append(format_sentence_note(processed_item.data))
+                note_item_pairs.append((format_sentence_note(processed_item.data), item))
             newly_processed_ids.add(item.item_id)
         else:
             logger.warning("Failed to process item: %s. Skipping.", item.text)
 
-    logger.info("Prepared %d notes for Anki.", len(notes_to_add))
-    return notes_to_add, newly_processed_ids
+    logger.info("Prepared %d notes for Anki.", len(note_item_pairs))
+    return note_item_pairs, newly_processed_ids
 
 
 def _add_notes_to_anki(
-    notes_to_add: List[AnkiNote],
-    new_favorites: List[FavoriteItem],
+    note_item_pairs: List[Tuple[AnkiNote, FavoriteItem]],
     processed_item_ids: Set[str],
 ) -> List[FavoriteItem]:
     """Adds notes to Anki and updates processed IDs."""
     ensure_deck_and_model(config.ANKI_WORD_DECK_NAME, config.ANKI_WORD_NOTE_TYPE)
     ensure_deck_and_model(config.ANKI_SENTENCE_DECK_NAME, config.ANKI_SENTENCE_NOTE_TYPE)
 
-    logger.info("Adding %d notes to Anki one by one...", len(notes_to_add))
+    logger.info("Adding %d notes to Anki one by one...", len(note_item_pairs))
     successfully_added_items: List[FavoriteItem] = []
 
-    for i, note in enumerate(notes_to_add):
-        original_favorite_item = new_favorites[i]
+    for note, original_favorite_item in note_item_pairs:
         note_id = add_note(note)
 
         if note_id is not None:
@@ -103,7 +99,7 @@ def _add_notes_to_anki(
     logger.info(
         "Successfully added %d notes to Anki out of %d attempted.",
         len(successfully_added_items),
-        len(notes_to_add),
+        len(note_item_pairs),
     )
 
     for item in successfully_added_items:
@@ -156,15 +152,15 @@ def run_once(limit: int, dry_run: bool, skip_browser: bool) -> None:
         logger.info("No new items to process. Exiting run.")
         return
 
-    notes_to_add, newly_processed_ids = _process_new_favorites(new_favorites, limit, dry_run)
+    note_item_pairs, newly_processed_ids = _process_new_favorites(new_favorites, limit, dry_run)
 
-    if not notes_to_add:
+    if not note_item_pairs:
         logger.info("No notes were successfully processed for Anki. Exiting.")
         return
 
     if dry_run:
         logger.info("Dry run enabled. Skipping Anki card creation and deletion from Google Favorites.")
-        for note in notes_to_add:
+        for note, _ in note_item_pairs:
             logger.info(
                 "DRY RUN - Anki Note (Deck: %s, Model: %s): %s",
                 note.get("deckName"),
@@ -178,7 +174,7 @@ def run_once(limit: int, dry_run: bool, skip_browser: bool) -> None:
         )
         return
 
-    successfully_added_items = _add_notes_to_anki(notes_to_add, new_favorites, processed_item_ids)
+    successfully_added_items = _add_notes_to_anki(note_item_pairs, processed_item_ids)
     _delete_processed_favorites(successfully_added_items, skip_browser)
 
 
@@ -205,4 +201,5 @@ def main() -> int:
     return 0
 
 if __name__ == "__main__":
+    import sys
     sys.exit(main())

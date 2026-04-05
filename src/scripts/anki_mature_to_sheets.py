@@ -13,23 +13,19 @@ Usage:
 """
 
 import argparse
+import gspread
 import logging
 import re
-from pathlib import Path
+import sys
 from typing import List, Tuple
 
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
+from ..utils import config
+from ..utils.logging_setup import setup_logging
+from ..core.anki_client import find_cards, cards_info
 
 # ============================================================
 # ⚙️  Config
 # ============================================================
-SERVICE_ACCOUNT_FILE: str = "data/service_account.json"
-SPREADSHEET_ID: str = "1cWV8jg6Obh93NV7OWwJ03MU_N3mu1IAZUa82_Zpmqp8"
-ANKI_COLLECTION_PATH: str = str(
-    Path.home() / "Library/Application Support/Anki2/ユーザー 1/collection.anki2"
-)
-
 # Mature カードの最小間隔日数
 MATURE_THRESHOLD: int = 21
 
@@ -50,11 +46,6 @@ SCOPES: List[str] = [
 HEADER: List[str] = ["Content"]
 # ============================================================
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
 logger = logging.getLogger("anki_mature_to_sheets")
 
 
@@ -66,7 +57,7 @@ def strip_html(text: str) -> str:
     return clean
 
 
-from ..core.anki_client import find_cards, cards_info
+
 
 def fetch_mature_cards(
     deck_name_prefix: str,
@@ -143,25 +134,29 @@ def sync_to_sheet(
     worksheet.clear()
     rows = [[HEADER[0]]] + [[item] for item in data]
     worksheet.update(rows, value_input_option="RAW")
-    logger.info(f"  '{tab_name}' タブへ {len(data)} 行を書き込みました。")
+    logger.info("  '%s' タブへ %d 行を書き込みました。", tab_name, len(data))
 
 
 def main() -> None:
+    setup_logging()
     parser = argparse.ArgumentParser(description="Anki Mature カードを Google Sheets へ同期します。")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
     client = None
     if not args.dry_run:
-        client = gspread.authorize(ServiceAccountCredentials.from_json_keyfile_name(SERVICE_ACCOUNT_FILE, SCOPES))
+        if not config.SERVICE_ACCOUNT_PATH.exists():
+             logger.error("Service account file not found at %s", config.SERVICE_ACCOUNT_PATH)
+             sys.exit(1)
+        client = gspread.service_account(filename=str(config.SERVICE_ACCOUNT_PATH))
 
     for deck_name, field_index, tab_name in DECK_CONFIGS:
         logger.info("-" * 60)
-        logger.info(f"処理中: '{deck_name}' → '{tab_name}'")
+        logger.info("処理中: '%s' → '%s'", deck_name, tab_name)
         
         cards = fetch_mature_cards(deck_name, field_index)
         if cards:
-            sync_to_sheet(client, SPREADSHEET_ID, tab_name, cards, args.dry_run)
+            sync_to_sheet(client, config.SPREADSHEET_ID, tab_name, cards, args.dry_run)
         else:
             logger.info("  対象カードなし。")
 

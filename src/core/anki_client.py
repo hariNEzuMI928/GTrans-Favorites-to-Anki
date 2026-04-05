@@ -46,6 +46,14 @@ def _invoke(action: str, params: Optional[Dict[str, Any]] = None) -> Any:
         logger.error("AnkiConnect error for action '%s': %s", action, error_message)
         raise RuntimeError(f"AnkiConnect error: {error_message}")
     return data.get("result")
+    
+def check_connection() -> bool:
+    """Checks if AnkiConnect is accessible."""
+    try:
+        _invoke("version")
+        return True
+    except Exception:
+        return False
 
 
 def ensure_deck_and_model(deck_name: str, model_name: str) -> None:

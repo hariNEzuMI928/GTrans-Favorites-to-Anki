@@ -7,8 +7,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.main import run_once
-from src.scraper import FavoriteItem
-from src.gemini_client import ProcessedItem, ProcessedWord
+from src.core.scraper import FavoriteItem
+from src.core.gemini_client import ProcessedItem, ProcessedWord
 
 @pytest.fixture
 def mock_dependencies(mocker):
@@ -86,11 +86,8 @@ def test_run_once_cleans_up_stale_items(mock_dependencies):
     mock_dependencies['load_ids'].return_value = {'1'}
     stale_item = FavoriteItem(text='stale', translation='古い', item_id='1')
 
-    # fetch_favorites is called, finds a stale item, then is called again after cleanup.
-    mock_dependencies['fetch_favorites'].side_effect = [
-        [stale_item],  # First call returns the stale item
-        []             # Second call returns an empty list
-    ]
+    # fetch_favorites is called once, finds a stale item.
+    mock_dependencies['fetch_favorites'].return_value = [stale_item]
     mock_dependencies['delete_favorite_item'].return_value = True
 
     # Act
@@ -99,10 +96,8 @@ def test_run_once_cleans_up_stale_items(mock_dependencies):
     # Assert
     mock_dependencies['load_ids'].assert_called_once()
 
-    # It should fetch, find stale item, delete it, then fetch again
-    expected_fetch_calls = [call(limit=10), call(limit=10)]
-    mock_dependencies['fetch_favorites'].assert_has_calls(expected_fetch_calls)
-    assert mock_dependencies['fetch_favorites'].call_count == 2
+    # It should fetch once, find stale item, delete it
+    mock_dependencies['fetch_favorites'].assert_called_once_with(limit=10)
 
     mock_dependencies['delete_favorite_item'].assert_called_once_with(stale_item)
 

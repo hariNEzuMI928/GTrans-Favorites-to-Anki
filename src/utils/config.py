@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 from dotenv import load_dotenv
-from typing import Union, Literal
+from typing import Optional
 
 
 # Load environment variables from .env file if present
@@ -19,6 +19,7 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 AUTH_STATE_PATH: Path = DATA_DIR / "auth_state.json"
 PROCESSED_IDS_PATH: Path = DATA_DIR / "processed_ids.json"
 APP_LOG_PATH: Path = DATA_DIR / "app.log"
+SERVICE_ACCOUNT_PATH: Path = DATA_DIR / "service_account.json"
 
 
 # External services
@@ -58,4 +59,7 @@ PLAYWRIGHT_USER_AGENT: str = os.environ.get(
 
 # Runtime behavior
 DEFAULT_BATCH_LIMIT: int = int(os.environ.get("BATCH_LIMIT", "50"))
-LOG_LEVEL: str = os.environ.get("LOG_LEVEL", "INFO").upper()  # 新しく追加
+LOG_LEVEL: str = os.environ.get("LOG_LEVEL", "INFO").upper()
+
+# Google Sheets
+SPREADSHEET_ID: str = os.environ.get("SPREADSHEET_ID", "")

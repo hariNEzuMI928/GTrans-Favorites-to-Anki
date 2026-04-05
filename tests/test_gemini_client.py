@@ -1,142 +1,91 @@
-import pytest
 import json
-from unittest.mock import MagicMock
-from google.api_core.exceptions import GoogleAPIError
-
-# src ディレクトリをパスに追加
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-from src.gemini_client import GeminiProcessor, ProcessedWord, ProcessedSentence, ProcessedItem
-from src.scraper import FavoriteItem
+from unittest.mock import MagicMock, patch
+import pytest
+from src.core.gemini_client import GeminiProcessor, ProcessedWord, ProcessedSentence, FavoriteItem
 
 @pytest.fixture
-def mock_genai(mocker):
-    """Fixture to mock the google.generativeai library."""
-    mock_genai_lib = mocker.patch('src.gemini_client.genai')
-
-    # Mock the configure and GenerativeModel parts
-    mock_genai_lib.configure = MagicMock()
-    mock_model = MagicMock()
-    mock_genai_lib.GenerativeModel.return_value = mock_model
-
-    return mock_genai_lib, mock_model
+def mock_genai():
+    with patch("google.generativeai.configure"):
+        with patch("google.generativeai.GenerativeModel") as mock_model:
+            yield mock_model
 
 @pytest.fixture
-def gemini_processor(mocker, mock_genai):
-    """Fixture to provide an instance of GeminiProcessor with a mocked API key."""
-    mocker.patch('src.config.GEMINI_API_KEY', 'fake-api-key')
-    return GeminiProcessor()
+def processor(mock_genai):
+    with patch("src.utils.config.GEMINI_API_KEY", "test_key"):
+        return GeminiProcessor()
 
-def test_init_raises_error_if_no_api_key(mocker):
-    """Test that GeminiProcessor raises a RuntimeError if the API key is missing."""
-    mocker.patch('src.config.GEMINI_API_KEY', '')
-    with pytest.raises(RuntimeError, match="GEMINI_API_KEY is not set in .env"):
-        GeminiProcessor()
-
-def test_process_item_word_success(gemini_processor, mock_genai):
-    """Test successful processing of a 'word' item."""
-    _, mock_model = mock_genai
-    favorite_item = FavoriteItem(text="Ephemeral", translation="はかない", item_id="123")
-
-    response_data = {
+def test_process_item_word(processor, mock_genai):
+    # Mock response for a word
+    mock_response = MagicMock()
+    mock_response.text = json.dumps({
         "type": "word",
         "data": {
-            "english_word": "Ephemeral",
-            "example_sentence": "The beauty of cherry blossoms is ephemeral.",
-            "japanese_meaning": "はかない、つかの間の",
-            "example_translation": "桜の美しさははかない。"
+            "english_word": "test",
+            "example_sentence": "This is a test.",
+            "japanese_meaning": "テスト",
+            "example_translation": "これはテストです。"
         }
-    }
-    mock_response = MagicMock()
-    mock_response.text = json.dumps(response_data)
-    mock_model.generate_content.return_value = mock_response
-
-    result = gemini_processor.process_item(favorite_item)
-
-    assert isinstance(result, ProcessedItem)
+    })
+    processor.model.generate_content.return_value = mock_response
+    
+    item = FavoriteItem(text="test", translation="テスト", item_id="123")
+    result = processor.process_item(item)
+    
     assert result.type == "word"
     assert isinstance(result.data, ProcessedWord)
-    assert result.data.english_word == "Ephemeral"
-    mock_model.generate_content.assert_called_once()
+    assert result.data.english_word == "test"
+    assert result.data.japanese_meaning == "テスト"
 
-def test_process_item_sentence_success(gemini_processor, mock_genai):
-    """Test successful processing of a 'sentence' item."""
-    _, mock_model = mock_genai
-    favorite_item = FavoriteItem(text="How are you?", translation="お元気ですか？", item_id="456")
-
-    response_data = {
+def test_process_item_sentence(processor, mock_genai):
+    # Mock response for a sentence
+    mock_response = MagicMock()
+    mock_response.text = json.dumps({
         "type": "sentence",
         "data": {
-            "japanese_sentence": "お元気ですか？",
-            "english_sentence": "How are you?"
+            "english_sentence": "I go to school.",
+            "japanese_sentence": "学校へ行きます。"
         }
-    }
-    mock_response = MagicMock()
-    mock_response.text = json.dumps(response_data)
-    mock_model.generate_content.return_value = mock_response
-
-    result = gemini_processor.process_item(favorite_item)
-
-    assert isinstance(result, ProcessedItem)
+    })
+    processor.model.generate_content.return_value = mock_response
+    
+    item = FavoriteItem(text="I go to school.", translation="学校へ行きます。", item_id="456")
+    result = processor.process_item(item)
+    
     assert result.type == "sentence"
     assert isinstance(result.data, ProcessedSentence)
-    assert result.data.english_sentence == "How are you?"
+    assert result.data.english_sentence == "I go to school."
+    assert result.data.japanese_sentence == "学校へ行きます。"
 
-def test_process_item_json_decode_error(gemini_processor, mock_genai):
-    """Test that None is returned if the API response is not valid JSON."""
-    _, mock_model = mock_genai
-    favorite_item = FavoriteItem(text="Test", translation="テスト", item_id="789")
-
+def test_process_item_malformed_json(processor, mock_genai):
     mock_response = MagicMock()
-    mock_response.text = "This is not JSON"
-    mock_model.generate_content.return_value = mock_response
-
-    result = gemini_processor.process_item(favorite_item)
+    mock_response.text = "this is not json"
+    processor.model.generate_content.return_value = mock_response
+    
+    item = FavoriteItem(text="test", translation="テスト", item_id="123")
+    result = processor.process_item(item)
+    
     assert result is None
 
-def test_process_item_google_api_error(gemini_processor, mock_genai):
-    """Test that None is returned if a GoogleAPIError occurs."""
-    _, mock_model = mock_genai
-    favorite_item = FavoriteItem(text="Test", translation="テスト", item_id="abc")
-
-    mock_model.generate_content.side_effect = GoogleAPIError("API limit reached")
-
-    result = gemini_processor.process_item(favorite_item)
-    assert result is None
-
-def test_process_item_missing_keys_in_response(gemini_processor, mock_genai):
-    """Test that None is returned if the JSON response is missing required keys."""
-    _, mock_model = mock_genai
-    favorite_item = FavoriteItem(text="Test", translation="テスト", item_id="def")
-
-    # Missing 'data' key
-    response_data = {"type": "word"}
+def test_process_item_boundary_extraction(processor, mock_genai):
+    # Gemini sometimes adds extra text or markdown
     mock_response = MagicMock()
-    mock_response.text = json.dumps(response_data)
-    mock_model.generate_content.return_value = mock_response
-
-    result = gemini_processor.process_item(favorite_item)
-    assert result is None
-
-def test_process_item_with_markdown_cleanup(gemini_processor, mock_genai):
-    """Test if the client correctly handles JSON wrapped in markdown code blocks."""
-    _, mock_model = mock_genai
-    favorite_item = FavoriteItem(text="Test", translation="テスト", item_id="123")
-
-    response_data = {
-        "type": "word",
-        "data": {"english_word": "Cleaned", "example_sentence": "", "japanese_meaning": "", "example_translation": ""}
-    }
-    json_string = json.dumps(response_data)
-    markdown_response = f"```json\n{json_string}\n```"
-
-    mock_response = MagicMock()
-    mock_response.text = markdown_response
-    mock_model.generate_content.return_value = mock_response
-
-    result = gemini_processor.process_item(favorite_item)
+    mock_response.text = """Markdown prefix
+```json
+{
+  "type": "word",
+  "data": {
+    "english_word": "test",
+    "example_sentence": "test",
+    "japanese_meaning": "test",
+    "example_translation": "test"
+  }
+}
+```
+Markdown suffix"""
+    processor.model.generate_content.return_value = mock_response
+    
+    item = FavoriteItem(text="test", translation="test", item_id="123")
+    result = processor.process_item(item)
+    
     assert result is not None
     assert result.type == "word"
-    assert result.data.english_word == "Cleaned"

@@ -9,7 +9,7 @@ from typing import List, Dict, Any, Optional
 import requests
 
 from ..utils import config
-from ..core.anki_client import find_notes, notes_info, update_note_fields, store_media_file, _invoke
+from ..core.anki_client import find_notes, notes_info, update_note_fields, store_media_file, check_connection
 from ..utils.logging_setup import setup_logging
 
 logger = logging.getLogger("anki_image_updater")
@@ -31,7 +31,7 @@ def get_langeek_image_url(word: str) -> Optional[str]:
         data = resp.json()
 
         if not data or not isinstance(data, list):
-            logger.info(f"No results found for '{word}' in Langeek API.")
+            logger.info("No results found for '%s' in Langeek API.", word)
             return None
 
         # The API returns a list of matches. Usually the first one is the best match.
@@ -40,23 +40,23 @@ def get_langeek_image_url(word: str) -> Optional[str]:
         first_match = data[0]
         translation = first_match.get('translation')
         if not translation:
-             logger.debug(f"No translation object for '{word}'.")
+             logger.debug("No translation object for '%s'.", word)
              return None
 
         word_photo = translation.get('wordPhoto')
         if not word_photo:
-            logger.debug(f"No wordPhoto object for '{word}'.")
+            logger.debug("No wordPhoto object for '%s'.", word)
             return None
 
         image_url = word_photo.get('photo')
         if image_url:
-            logger.info(f"Found image URL for '{word}': {image_url}")
+            logger.info("Found image URL for '%s': %s", word, image_url)
             return image_url
 
         return None
 
     except Exception as e:
-        logger.error(f"Error searching Langeek API for '{word}': {e}")
+        logger.error("Error searching Langeek API for '%s': %s", word, e)
         return None
 
 def download_image_as_base64(url: str) -> Optional[str]:
@@ -66,7 +66,7 @@ def download_image_as_base64(url: str) -> Optional[str]:
         resp.raise_for_status()
         return base64.b64encode(resp.content).decode("utf-8")
     except Exception as e:
-        logger.error(f"Failed to download image from {url}: {e}")
+        logger.error("Failed to download image from %s: %s", url, e)
         return None
 
 def update_cards_with_images(deck_name: str, ease_limit: Optional[float] = None):
@@ -75,14 +75,14 @@ def update_cards_with_images(deck_name: str, ease_limit: Optional[float] = None)
     if ease_limit is not None:
         query += f' prop:ease<{ease_limit}'
 
-    logger.info(f"Searching for cards with query: {query}")
+    logger.info("Searching for cards with query: %s", query)
 
     note_ids = find_notes(query)
     if not note_ids:
         logger.info("No cards matching the criteria found.")
         return
 
-    logger.info(f"Found {len(note_ids)} notes to process.")
+    logger.info("Found %d notes to process.", len(note_ids))
     notes_data = notes_info(note_ids)
 
     for i, note in enumerate(notes_data):
@@ -97,45 +97,50 @@ def update_cards_with_images(deck_name: str, ease_limit: Optional[float] = None)
         elif 'Front' in fields:
             word = fields['Front']['value']
 
+        # Determine which field to update
+        target_field = None
         if 'フレーズ' in fields:
-          target_field = 'フレーズ'
+            target_field = 'フレーズ'
         elif 'Front' in fields:
-          target_field = 'Front'
+            target_field = 'Front'
+
+        if not target_field:
+            logger.warning("Could not determine target field for note %s. Fields: %s", note_id, fields.keys())
+            continue
 
         if "<img" in fields.get(target_field, {}).get('value', ""):
-            logger.debug(f"Note {note_id} already has an image in '{target_field}'. Skipping.")
+            logger.debug("Note %s already has an image in '%s'. Skipping.", note_id, target_field)
             continue
 
         if not word:
-            logger.warning(f"Could not determine word for note {note_id}. Fields: {fields.keys()}")
+            logger.warning("Could not determine word for note %s.", note_id)
             continue
 
-        logger.info(f"⭐️Processing note {i+1}/{len(notes_data)} (ID: {note_id}, Word: {word})")
+        logger.info("⭐️Processing note %d/%d (ID: %s, Word: %s)", i+1, len(notes_data), note_id, word)
 
         # Add a small delay to be nice to the API
         time.sleep(0.5)
 
-        image_url = get_langeek_image_url(word)
-        if not image_url:
-            logger.info(f"No image found for word: {word}")
-            continue
-
         img_b64 = download_image_as_base64(image_url)
         if not img_b64:
-            logger.info(f"Failed to download image for word: {word}")
+            logger.info("Failed to download image for word: %s", word)
             continue
 
         current_phrase = fields.get(target_field, {}).get('value', "")
         try:
-            # 既存のフレーズを残しつつ、指定のHTMLを追加
-            updated_phrase = f'{current_phrase}<br><img src="{image_url}" width="400">'
+            # Store image in Anki media folder for robustness
+            image_filename = f"langeek_{word}_{note_id}.jpg"
+            store_media_file(image_filename, img_b64)
+
+            # Update note with local image reference
+            updated_phrase = f'{current_phrase}<br><img src="{image_filename}" width="400">'
 
             update_fields = {target_field: updated_phrase}
             update_note_fields(note_id, update_fields)
-            logger.info(f"Updated note {note_id} with image URL in '{target_field}' field.")
+            logger.info("Updated note %s with local image '%s' in '%s' field.", note_id, image_filename, target_field)
 
         except Exception as e:
-            logger.error(f"Failed to update note {note_id}: {e}")
+            logger.error("Failed to update note %s: %s", note_id, e)
 
 def main():
     setup_logging()
@@ -145,10 +150,8 @@ def main():
 
     args = parser.parse_args()
 
-    try:
-        _invoke("version")
-    except Exception as e:
-        logger.error(f"Cannot connect to AnkiConnect. Is Anki running? Error: {e}")
+    if not check_connection():
+        logger.error("Cannot connect to AnkiConnect. Is Anki running?")
         sys.exit(1)
 
     update_cards_with_images(args.deck, args.ease)

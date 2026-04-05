@@ -3,16 +3,9 @@ import logging
 import os
 import sys
 
-# Ensure we can import from src
-sys.path.append(os.getcwd())
+from ..core.anki_client import _invoke, find_notes
+from ..utils.logging_setup import setup_logging
 
-from src.core.anki_client import _invoke, find_notes
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
 logger = logging.getLogger(__name__)
 
 CSV_FILES = [
@@ -29,16 +22,17 @@ def add_tag_to_notes(note_ids, tag):
     try:
         # addTags action adds tags to the specified notes
         _invoke("addTags", {"notes": note_ids, "tags": tag})
-        logger.debug(f"Added tag '{tag}' to note IDs: {note_ids}")
+        logger.debug("Added tag '%s' to note IDs: %s", tag, note_ids)
     except Exception as e:
         logger.error(f"Failed to add tags: {e}")
 
 def main():
+    setup_logging()
     total_processed = 0
     total_found = 0
     total_not_found = 0
 
-    logger.info(f"Starting to tag notes in deck '{DECK_NAME}' with tag '{TAG}'")
+    logger.info("Starting to tag notes in deck '%s' with tag '%s'", DECK_NAME, TAG)
 
     for csv_file in CSV_FILES:
         path = os.path.join(os.getcwd(), csv_file)
@@ -46,7 +40,7 @@ def main():
             logger.error(f"File not found: {path}")
             continue
 
-        logger.info(f"--- Processing {csv_file} ---")
+        logger.info("--- Processing %s ---", csv_file)
 
         try:
             with open(path, mode='r', encoding='utf-8') as f:
@@ -89,19 +83,19 @@ def main():
                     if note_ids:
                         add_tag_to_notes(note_ids, TAG)
                         total_found += 1
-                        logger.info(f"Found and tagged: {japanese_text[:40]}...")
+                        logger.info("Found and tagged: %s...", japanese_text[:40])
                     else:
-                        logger.warning(f"Note NOT found: {japanese_text[:40]}...")
+                        logger.warning("Note NOT found: %s...", japanese_text[:40])
                         total_not_found += 1
 
         except Exception as e:
-            logger.error(f"Error processing file {csv_file}: {e}")
+            logger.error("Error processing file %s: %s", csv_file, e)
 
     logger.info("=" * 50)
-    logger.info(f"Process Completed")
-    logger.info(f"  Total sentences in CSV: {total_processed}")
-    logger.info(f"  Successfully found & tagged: {total_found}")
-    logger.info(f"  Not found: {total_not_found}")
+    logger.info("Process Completed")
+    logger.info("  Total sentences in CSV: %d", total_processed)
+    logger.info("  Successfully found & tagged: %d", total_found)
+    logger.info("  Not found: %d", total_not_found)
     logger.info("=" * 50)
 
 if __name__ == "__main__":

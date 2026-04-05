@@ -30,7 +30,8 @@ anki-vocab-bot/
 └── data/                    # Persistent data
     ├── auth_state.json      # Google login authentication information
     ├── processed_ids.json   # List of processed words/sentences
-    └── app.log              # Execution logs
+    ├── app.log              # Execution logs
+    └── service_account.json # Google Sheets API credentials (for sheet sync)
 ```
 
 #### 2.2. Data Flow Diagram
@@ -91,6 +92,7 @@ graph TD
 | **AI Model**           | Google Gemini API                                                | Data processing                            |
 | **Anki Integration**   | AnkiConnect                                                      | Card registration via add-on               |
 | **Libraries**          | `playwright`, `requests`, `python-dotenv`, `google-generativeai` | Managed by `requirements.txt`              |
+| **Testing**            | `pytest`, `pytest-mock`                                        | Unit testing framework                     |
 
 ### 5. Execution Steps
 
@@ -114,6 +116,7 @@ graph TD
       ANKI_WORD_NOTE_TYPE="Your Word Note Type Name"
       ANKI_SENTENCE_NOTE_TYPE="Your Sentence Note Type Name"
       ```
+    - For Google Sheets synchronization, obtain a Google Service Account JSON key, save it as `data/service_account.json`, and set `SPREADSHEET_ID` in your `.env`.
 5.  Launch Anki and enable the AnkiConnect add-on.
 6.  **Perform manual login. A browser will launch; please log into your Google account.**
     ```bash
@@ -217,11 +220,18 @@ Exports "Mature" cards (interval >= 21 days) from Anki to Google Sheets. This he
 ```bash
 python3 -m src.scripts.anki_mature_to_sheets [--dry-run]
 ```
+Note: You must have `data/service_account.json` configured and `SPREADSHEET_ID` defined in your `.env` file.
 
 #### 6.4. CSV Note Tagger
 Searches for notes in Anki based on a Japanese/English CSV file and adds a specific tag (e.g., `interview1`) to matched notes.
 ```bash
 python3 -m src.scripts.tag_interview_notes
+```
+
+#### 6.5. Running Tests
+The project uses `pytest` for unit testing. To run all tests and ensure the environment is correctly set up:
+```bash
+python3 -m pytest tests/
 ```
 
 ### 7. Maintenance

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-import logging
 import json
+import logging
+import re
 import time
-from typing import Dict, List, Literal, Any, TypedDict
 from dataclasses import dataclass
+from typing import Any, Dict, List, Literal, TypedDict
 
 import google.generativeai as genai
 from google.api_core.exceptions import GoogleAPIError
@@ -48,85 +49,69 @@ class ProcessedItem:
     data: ProcessedWord | ProcessedSentence
 
 class GeminiProcessor:
+    MAX_RETRIES = 3
+
     def __init__(self) -> None:
         api_key = config.GEMINI_API_KEY
         if not api_key:
             raise RuntimeError("GEMINI_API_KEY is not set in .env")
         genai.configure(api_key=api_key)  # pyright: ignore [reportPrivateImportUsage]
-        self.model = genai.GenerativeModel(config.GEMINI_MODEL)  # pyright: ignore [reportPrivateImportUsage]
+        self.model = genai.GenerativeModel(
+            config.GEMINI_MODEL,
+            generation_config={"response_mime_type": "application/json"}
+        )  # pyright: ignore [reportPrivateImportUsage]
 
     def process_item(self, item: FavoriteItem, retry_count: int = 0) -> ProcessedItem | None:
-        MAX_RETRIES = 3
         
-        prompt = f"""Developer: Given an English/Japanese text and its translation from Google Translate favorites:
+        prompt = f"""Given a text and its translation from Google Translate favorites:
 
 - **Text:** {item.text}
 - **Translated Text:** {item.translation}
 
-Begin with a concise checklist (3-7 bullets) of what you will do; keep items conceptual, not implementation-level.
-
-Your task:
+Task:
 1. Determine if the text is a 'word/phrase' (not a complete sentence) or a 'sentence' (complete grammatical sentence).
-2. If it is a 'word/phrase':
-    - Extract the word or phrase.
-    - Provide a natural, contextually relevant example sentence using the word or phrase.
-    - Give its Japanese meaning.
-    - Give the Japanese translation of the example sentence.
-3. If it is a 'sentence':
-    - Extract the sentence.
-    - Provide its Japanese translation (from the item). Do not generate additional examples.
+2. If it's a 'word/phrase':
+    - Provide a natural, contextually relevant English example sentence.
+    - Provide the Japanese meaning of the word/phrase.
+    - Provide the Japanese translation of the example sentence.
+3. If it's a 'sentence':
+    - Use the provided Japanese translation.
 
-Respond with only a JSON object in this format:
-
-# Output Format
-{{
-  "type": "word" | "sentence",
-  "data": {{ ... }}
-}}
-
-
-Output schema:
-- For a 'word/phrase':
+Return a JSON object matching this schema:
+- For 'word':
   {{
     "type": "word",
     "data": {{
-      "english_word": \"<string>\",
-      "example_sentence": \"<string>\",
-      "japanese_meaning": \"<string>\",
-      "example_translation": \"<string>\"
+      "english_word": "...",
+      "example_sentence": "...",
+      "japanese_meaning": "...",
+      "example_translation": "..."
     }}
   }}
-- For a 'sentence':
+- For 'sentence':
   {{
     "type": "sentence",
     "data": {{
-      "english_sentence": \"<string>\",
-      "japanese_sentence": \"<string>\"
+      "english_sentence": "...",
+      "japanese_sentence": "..."
     }}
   }}
-
-Return only the JSON result. Do not include any additional text.
 """
         response_text = ""
         try:
             response = self.model.generate_content(prompt)
-            response_text = response.text
-            json_output = response_text.strip()
-
-            # Clean up potential markdown formatting if Gemini includes it
-            if json_output.startswith("```json") and json_output.endswith("```"):
-                json_output = json_output[7:-3].strip()
+            json_output = response.text.strip()
 
             # Attempt to find the first '{' and the last '}' to extract the raw JSON string.
+            # (Though response_mime_type should make this less necessary)
             try:
                 start_index = json_output.index('{')
                 end_index = json_output.rindex('}')
                 json_output = json_output[start_index:end_index + 1]
             except ValueError:
-                logger.error("Could not find a valid JSON object boundary ('{' and '}') in the response for item_id: %s", item.item_id)
+                logger.error("Could not find a valid JSON object boundary in the response for item_id: %s", item.item_id)
                 return None
 
-            # Use TypedDict for better type checking
             data: GeminiOutput = json.loads(json_output)
 
             item_type = data.get("type")
@@ -163,8 +148,7 @@ Return only the JSON result. Do not include any additional text.
             logger.error("Gemini API error for item_id %s: %s", item.item_id, e)
             
             # Check for rate limit error (HTTP 429) and implement retry logic
-            if "429" in str(e) and retry_count < MAX_RETRIES:
-                import re
+            if "429" in str(e) and retry_count < self.MAX_RETRIES:
                 retry_delay = 5.0 # Default fallback delay
                 
                 # Attempt to extract precise retry delay from the error message
@@ -174,7 +158,7 @@ Return only the JSON result. Do not include any additional text.
                         retry_delay = float(match.group(1))
 
                 logger.info("Rate limit exceeded (429). Retrying item_id: %s in %.2f seconds (Attempt %d/%d).", 
-                            item.item_id, retry_delay, retry_count + 1, MAX_RETRIES)
+                            item.item_id, retry_delay, retry_count + 1, self.MAX_RETRIES)
                 time.sleep(retry_delay + 1) # Add a small buffer
                 return self.process_item(item, retry_count + 1) # Recursive retry
             

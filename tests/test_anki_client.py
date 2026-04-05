@@ -7,9 +7,9 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src import anki_client
-from src import config
-from src.gemini_client import ProcessedWord, ProcessedSentence
+from src.core import anki_client
+from src.utils import config
+from src.core.gemini_client import ProcessedWord, ProcessedSentence
 
 @pytest.fixture
 def mock_requests(mocker):
