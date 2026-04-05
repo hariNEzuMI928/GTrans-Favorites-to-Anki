@@ -9,7 +9,7 @@ from dataclasses import dataclass
 import google.generativeai as genai
 from google.api_core.exceptions import GoogleAPIError
 
-from . import config
+from ..utils import config
 from .scraper import FavoriteItem # Import FavoriteItem from scraper
 
 logger = logging.getLogger(__name__)

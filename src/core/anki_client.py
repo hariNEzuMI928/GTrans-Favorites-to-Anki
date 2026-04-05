@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, TypedDict # TypedDictを追加
 
 import requests
 
-from . import config
+from ..utils import config
 from .gemini_client import ProcessedItem, ProcessedWord, ProcessedSentence # Import ProcessedItem and its sub-types
 
 

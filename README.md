@@ -22,9 +22,10 @@ anki-vocab-bot/
 ├── .env                     # Manages API keys and sensitive information
 │
 ├── src/                     # Python source code
-│   ├── main.py              # Main processing script
-│   ├── config.py            # Configuration loading script
-│   └── selectors.json       # Web scraping CSS selectors
+│   ├── main.py              # Main processing script (Anki Vocab Bot)
+│   ├── core/                # Core logic (scraper, clients)
+│   ├── scripts/             # Standalone tool scripts
+│   └── utils/               # Shared utilities (config, selectors, logging)
 │
 └── data/                    # Persistent data
     ├── auth_state.json      # Google login authentication information
@@ -60,7 +61,7 @@ graph TD
 #### 3.2. Data Acquisition Feature
 
 - **Web Scraping:** Playwright is used to access the Google Translate Favorites page in headless mode.
-- **Externalization of Selectors:** All CSS selectors for identifying HTML elements are defined in `src/selectors.json`. If the site structure changes, only this file needs to be modified.
+- **Externalization of Selectors:** All CSS selectors for identifying HTML elements are defined in `src/utils/selectors.json`. If the site structure changes, only this file needs to be modified.
 - **Prevention of Duplicate Processing:** Information about processed words and sentences is recorded in `data/processed_ids.json` to exclude them from future processing.
 
 #### 3.3. Data Processing Feature (Gemini)
@@ -143,7 +144,8 @@ graph TD
       Open `anki_scheduler.sh` and ensure the `python3` path is correct. You can find the correct path using `which python3`.
       ```bash
       # Example: If 'which python3' returns /usr/local/bin/python3, update the script accordingly.
-      /usr/bin/python3 -m src.main --once
+      # Generally, keeping it as .venv/bin/python3 is recommended.
+      .venv/bin/python3 -m src.main --once
       ```
 
   **Mac (cron) Scheduling Example (Run every 2 hours using `anki_scheduler.sh`)**
@@ -188,20 +190,48 @@ s - `cron` runs without a GUI environment, so ensure Playwright runs in headless
 - If `auth_state.json` expires, the script will fail. You will need to manually run `python3 -m src.main --manual-login` again to update the authentication state.
 - Periodically check `data/cron.log` to confirm the script is running without errors.
 
-### 6. CLI Options
+### 6. Command Reference
 
-- `--manual-login`: Executes the manual login flow to generate/update `data/auth_state.json`.
-- `--once`: Processes one batch and exits.
-- `--limit <N>`: Maximum number of items to process in one run (default is `BATCH_LIMIT` environment variable or 50).
-- `--dry-run`: Logs planned processing without sending data to AnkiConnect.
-- `--skip-browser`: Skips browser operations via Playwright (for development/debugging).
+The system includes several utilities besides the main translation sync. All commands should be run from the project root.
+
+#### 6.1. Main Translation Sync
+Synchronizes Google Translate "Favorites" to Anki using Gemini AI.
+```bash
+python3 -m src.main [--once] [--limit N] [--manual-login] [--dry-run]
+```
+- `--once`: Processed items once and exit (default behavior when scheduled).
+- `--manual-login`: Opens a browser for initial authentication. Use this if login fails.
+- `--limit <N>`: Maximum items to process in this run.
+- `--dry-run`: Simulation mode. No changes to Anki or Google Translate.
+
+#### 6.2. Batch Image Updater
+Finds difficult cards (low ease) in Anki and automatically adds relevant images from the Langeek API.
+```bash
+python3 -m src.scripts.anki_image_updater --deck "1_Vocabulary" --ease 2.0
+```
+- `--deck`: Target deck name.
+- `--ease`: Ease threshold (e.g., `2.0` means cards with ease < 200%).
+
+#### 6.3. Mature Cards to Google Sheets
+Exports "Mature" cards (interval >= 21 days) from Anki to Google Sheets. This helps in visual review of your long-term memory progress.
+```bash
+python3 -m src.scripts.anki_mature_to_sheets [--dry-run]
+```
+
+#### 6.4. CSV Note Tagger
+Searches for notes in Anki based on a Japanese/English CSV file and adds a specific tag (e.g., `interview1`) to matched notes.
+```bash
+python3 -m src.scripts.tag_interview_notes
+```
 
 ### 7. Maintenance
 
-- If Google Translate's site structure changes and scraping fails, investigate new CSS selectors using browser developer tools and update `src/selectors.json`. Python code changes are generally not required.
+- **CSS Selectors:** If Google Translate's UI changes, update the selectors in `src/utils/selectors.json`.
+- **API Keys:** Manage your Gemini API key in the `.env` file.
+- **AnkiConnect:** Ensure Anki is open and the AnkiConnect add-on is installed and configured to allow localhost connections.
 
 ### 8. Considerations
 
 - **Anki Running:** This system assumes that the Anki application is running on the host PC when the script is executed.
 - **Authentication Expiration:** Google login sessions have an expiration date. If automated login starts failing, you will need to perform manual login again to update `auth_state.json`.
-- **Prompt Engineering:** The Gemini prompt may need continuous improvement to achieve optimal results from Gemini.
+- **Prompt Engineering:** The Gemini prompt inside `src/core/gemini_client.py` can be tuned for better translation results.

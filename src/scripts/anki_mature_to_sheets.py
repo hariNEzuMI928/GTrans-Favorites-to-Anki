@@ -9,7 +9,7 @@ Google Sheetsへ全入れ替えで同期するスクリプト。
   - 2_EnglishComposition → index 1 (裏面) → "sentence" タブ
 
 Usage:
-  python -m src.anki_mature_to_sheets
+  python -m src.scripts.anki_mature_to_sheets
 """
 
 import argparse

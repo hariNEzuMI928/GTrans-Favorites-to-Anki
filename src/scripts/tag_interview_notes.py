@@ -6,7 +6,7 @@ import sys
 # Ensure we can import from src
 sys.path.append(os.getcwd())
 
-from src.anki_client import _invoke, find_notes
+from src.core.anki_client import _invoke, find_notes
 
 # Configure logging
 logging.basicConfig(

@@ -16,7 +16,7 @@ cd "$(dirname "$0")" || exit
 # 週次同期（日曜日に実行）
 if [ "$(date +%u)" -eq 7 ]; then
     log INFO "週次の Google Sheets 同期を開始します (Mature カード)..."
-    .venv/bin/python3 -m src.anki_mature_to_sheets
+    .venv/bin/python3 -m src.scripts.anki_mature_to_sheets
 fi
 
 # Ankiアプリケーションを起動

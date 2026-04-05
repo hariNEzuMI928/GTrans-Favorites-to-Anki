@@ -9,8 +9,9 @@ load_dotenv()
 
 
 # Directories
-BASE_DIR: Path = Path(__file__).resolve().parent.parent
+BASE_DIR: Path = Path(__file__).resolve().parent.parent.parent
 DATA_DIR: Path = BASE_DIR / "data"
+SELECTORS_PATH: Path = BASE_DIR / "src" / "utils" / "selectors.json"
 
 # Ensure DATA_DIR exists
 DATA_DIR.mkdir(parents=True, exist_ok=True)

@@ -8,9 +8,9 @@ from typing import List, Dict, Any, Optional
 
 import requests
 
-from . import config
-from .anki_client import find_notes, notes_info, update_note_fields, store_media_file, _invoke
-from .logging_setup import setup_logging
+from ..utils import config
+from ..core.anki_client import find_notes, notes_info, update_note_fields, store_media_file, _invoke
+from ..utils.logging_setup import setup_logging
 
 logger = logging.getLogger("anki_image_updater")
 
@@ -156,4 +156,4 @@ def main():
 if __name__ == "__main__":
     main()
 
-# python -m src.anki_image_updater --deck "1_Vocabulary" --ease 2
+# python -m src.scripts.anki_image_updater --deck "1_Vocabulary" --ease 2

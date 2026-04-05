@@ -9,7 +9,7 @@ from typing import Dict, List, Optional, Tuple, Any
 from playwright.sync_api import BrowserContext, Page, Playwright, sync_playwright, Browser, TimeoutError
 import hashlib
 
-from . import config
+from ..utils import config
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +23,7 @@ class FavoriteItem:
 
 class Scraper:
     def __init__(self) -> None:
-        self.selectors: Dict[str, str] = self._load_selectors(config.BASE_DIR / "src" / "selectors.json")
+        self.selectors: Dict[str, str] = self._load_selectors(config.SELECTORS_PATH)
 
     def _load_selectors(self, file_path: Path) -> Dict[str, str]:
         """Loads CSS selectors from a JSON file."""

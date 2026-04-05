@@ -6,13 +6,12 @@ import sys
 import time
 from typing import List, Dict, Any, Set, Tuple, Optional
 
-from . import config
-from .logging_setup import setup_logging
-from .scraper import ensure_logged_in, fetch_favorites, delete_favorite_item, FavoriteItem
-from .gemini_client import GeminiProcessor, ProcessedItem, ProcessedWord, ProcessedSentence
-from .anki_client import ensure_deck_and_model, format_word_note, format_sentence_note, add_note
-from .storage import load_ids, save_ids
-from .anki_client import AnkiNote # Import AnkiNote TypedDict
+from .utils import config
+from .utils.logging_setup import setup_logging
+from .core.scraper import ensure_logged_in, fetch_favorites, delete_favorite_item, FavoriteItem
+from .core.gemini_client import GeminiProcessor, ProcessedItem, ProcessedWord, ProcessedSentence
+from .core.anki_client import ensure_deck_and_model, format_word_note, format_sentence_note, add_note, AnkiNote
+from .utils.storage import load_ids, save_ids
 
 
 logger = logging.getLogger("main")
